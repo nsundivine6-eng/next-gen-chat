@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Next-Gen Messaging</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #121826;
+      color: white;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
+
+    .chat-container {
+      width: 100%;
+      max-width: 600px;
+      height: 100vh;
+      background: #1e293b;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 18px;
+      background: #0f172a;
+      text-align: center;
+      font-weight: bold;
+      font-size: 1.1rem;
+      border-bottom: 1px solid #334155;
+    }
+
+    .messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .message {
+      max-width: 78%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      word-wrap: break-word;
+    }
+
+    .message.self {
+      align-self: flex-end;
+      background: #2563eb;
+      border-bottom-right-radius: 3px;
+    }
+
+    .message.other {
+      align-self: flex-start;
+      background: #334155;
+      border-bottom-left-radius: 3px;
+    }
+
+    .sender {
+      font-weight: bold;
+      font-size: 0.8rem;
+      margin-bottom: 4px;
+    }
+
+    .meta {
+      font-size: 0.65rem;
+      opacity: 0.65;
+      margin-top: 5px;
+      text-align: right;
+    }
+
+    .system-msg {
+      text-align: center;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin: 5px 0;
+    }
+
+    .typing-indicator {
+      height: 22px;
+      padding-left: 15px;
+      color: #94a3b8;
+      font-size: 0.8rem;
+    }
+
+    .footer {
+      padding: 12px;
+      background: #0f172a;
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid #334155;
+    }
+
+    #message-input {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: white;
+      outline: none;
+      font-size: 15px;
+    }
+
+    #message-input:focus {
+      border-color: #2563eb;
+    }
+
+    button {
+      padding: 12px 18px;
+      border: none;
+      border-radius: 8px;
+      background: #2563eb;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: scale(0.97);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="chat-container">
+
+    <div class="header" id="chat-header">
+      Next-Gen Messaging
+    </div>
+
+    <div class="messages" id="message-container"></div>
+
+    <div class="typing-indicator" id="typing-status"></div>
+
+    <div class="footer">
+      <input
+        type="text"
+        id="message-input"
+        placeholder="Type a message..."
+        autocomplete="off"
+      >
+
+      <button onclick="sendMessage()">Send</button>
+    </div>
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+
+  <script>
+    const socket = io();
+
+    const username =
+      prompt("Enter your username:") || "Anonymous";
+
+    const room =
+      prompt("Enter room name:") || "General";
+
+    document.getElementById("chat-header").innerText =
+      `Room: ${room} • ${username}`;
+
+    socket.emit("join_room", {
+      username,
+      room
+    });
+
+    const messageContainer =
+      document.getElementById("message-container");
+
+    const messageInput =
+      document.getElementById("message-input");
+
+    const typingStatus =
+      document.getElementById("typing-status");
+
+    socket.on("receive_message", (data) => {
+
+      const isSelf =
+        data.sender === username;
+
+      const msgDiv =
+        document.createElement("div");
+
+      msgDiv.className =
+        `message ${isSelf ? "self" : "other"}`;
+
+      const sender =
+        document.createElement("div");
+
+      sender.className = "sender";
+
+      sender.textContent =
+        isSelf ? "You" : data.sender;
+
+      const message =
+        document.createElement("div");
+
+      message.textContent =
+        data.message;
+
+      const meta =
+        document.createElement("div");
+
+      meta.className = "meta";
+
+      meta.textContent =
+        data.timestamp;
+
+      msgDiv.appendChild(sender);
+      msgDiv.appendChild(message);
+      msgDiv.appendChild(meta);
+
+      messageContainer.appendChild(msgDiv);
+
+      messageContainer.scrollTop =
+        messageContainer.scrollHeight;
+    });
+
+    socket.on("system_message", (data) => {
+
+      const msgDiv =
+        document.createElement("div");
+
+      msgDiv.className = "system-msg";
+
+      msgDiv.textContent =
+        `${data.text} [${data.timestamp}]`;
+
+      messageContainer.appendChild(msgDiv);
+
+      messageContainer.scrollTop =
+        messageContainer.scrollHeight;
+    });
+
+    let typingTimeout;
+
+    messageInput.addEventListener("input", () => {
+
+      socket.emit("typing", {
+        room,
+        username,
+        isTyping: true
+      });
+
+      clearTimeout(typingTimeout);
+
+      typingTimeout = setTimeout(() => {
+
+        socket.emit("typing", {
+          room,
+          username,
+          isTyping: false
+        });
+
+      }, 1500);
+    });
+
+    socket.on("user_typing", (data) => {
+
+      if (data.isTyping) {
+
+        typingStatus.innerText =
+          `${data.username} is typing...`;
+
+      } else {
+
+        typingStatus.innerText = "";
+
+      }
+    });
+
+    function sendMessage() {
+
+      const message =
+        messageInput.value.trim();
+
+      if (message !== "") {
+
+        socket.emit("send_message", {
+          room,
+          sender: username,
+          message
+        });
+
+        messageInput.value = "";
+
+        socket.emit("typing", {
+          room,
+          username,
+          isTyping: false
+        });
+      }
+    }
+
+    messageInput.addEventListener("keydown", (event) => {
+
+      if (event.key === "Enter") {
+        sendMessage();
+      }
+
+    });
+  </script>
+
+</body>
+</html>
